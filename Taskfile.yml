@@ -1,0 +1,43 @@
+version: '3'
+
+dotenv: ['.env']
+
+vars:
+  CLAUDE_DIR: "{{.ROOT_DIR}}/.claude"
+
+tasks:
+  # =============================================================================
+  # CLAUDE CONFIGURATION
+  # =============================================================================
+  claude:sync:
+    desc: Copy Claude agents and reference files into project .claude directory
+    cmds:
+      - mkdir -p "{{.CLAUDE_DIR}}/agents"
+      - mkdir -p "{{.CLAUDE_DIR}}/reference"
+      - |
+        if [ -d ~/.claude/agents ]; then
+          cp -r ~/.claude/agents/* "{{.CLAUDE_DIR}}/agents/" 2>/dev/null || echo "No agents to copy"
+        else
+          echo "~/.claude/agents directory not found"
+        fi
+      - |
+        if [ -d ~/.claude/reference ]; then
+          cp -r ~/.claude/reference/* "{{.CLAUDE_DIR}}/reference/" 2>/dev/null || echo "No reference files to copy"
+        else
+          echo "~/.claude/reference directory not found"
+        fi
+      - |
+        if [ -f ~/.claude/settings.json ]; then
+          cp  ~/.claude/settings.json "{{.CLAUDE_DIR}}/settings.json" || echo "No settings files to copy"
+        else
+          echo "~/.claude/settings.json file not found"
+        fi
+    silent: false
+
+  # =============================================================================
+  # HELP
+  # =============================================================================
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list

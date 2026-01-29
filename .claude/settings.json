@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "alwaysThinkingEnabled": true,
+  "enabledPlugins": {
+    "commit-commands@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": true
+  },
+  "feedbackSurveyState": {
+    "lastShownTime": 1754286822382
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(gh pr view:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "WebFetch(domain:localhost)",
+      "Bash(lsof:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)"
+    ],
+    "ask": [],
+    "defaultMode": "acceptEdits",
+    "deny": []
+  }
+}
