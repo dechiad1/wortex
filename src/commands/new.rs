@@ -1,9 +1,13 @@
 use crate::cli::ExitKillArg;
+use crate::db;
 use crate::error::{Error, Result};
 use crate::state::{self, Command, Entry, ExitKill};
 use crate::{git, tmux};
 use chrono::Utc;
+use serde_json::json;
 use std::env;
+use std::fs;
+use std::path::Path;
 use uuid::Uuid;
 
 pub struct NewArgs {
@@ -79,6 +83,9 @@ pub fn execute(args: NewArgs) -> Result<()> {
     println!("Creating worktree at {:?}...", worktree_path);
     git::add_worktree(&worktree_path, &args.branch, &start_point)?;
 
+    // Get wortex binary path (needed for hooks config)
+    let wortex_bin = env::current_exe()?;
+
     // Get tmux session
     let session = tmux::get_current_session()?;
 
@@ -116,8 +123,14 @@ pub fn execute(args: NewArgs) -> Result<()> {
     // Save entry before creating window
     state::add_entry(entry.clone())?;
 
-    // Get the wortex binary path
-    let wortex_bin = env::current_exe()?;
+    // Initialize the database
+    db::init_db()?;
+
+    // Create Claude hooks configuration for tool usage logging
+    if matches!(entry.command, Command::Claude { .. }) {
+        println!("Setting up Claude hooks for tool logging...");
+        create_claude_hooks_config(&worktree_path, &wortex_bin, entry.id)?;
+    }
 
     // Create tmux window with wortex __run command
     let run_command = format!("{} __run {}", wortex_bin.display(), entry.id);
@@ -128,5 +141,51 @@ pub fn execute(args: NewArgs) -> Result<()> {
         "Created worktree and tmux window for branch '{}'",
         args.branch
     );
+    Ok(())
+}
+
+/// Creates .claude/settings.local.json with hooks to log tool usage
+fn create_claude_hooks_config(
+    worktree_path: &Path,
+    wortex_bin: &Path,
+    session_id: Uuid,
+) -> Result<()> {
+    let claude_dir = worktree_path.join(".claude");
+    fs::create_dir_all(&claude_dir)?;
+
+    let wortex_path = wortex_bin.display().to_string();
+    let session_str = session_id.to_string();
+
+    let settings = json!({
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": ".*",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": format!("{} __log-tool {} pre", wortex_path, session_str)
+                        }
+                    ]
+                }
+            ],
+            "PostToolUse": [
+                {
+                    "matcher": ".*",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": format!("{} __log-tool {} post", wortex_path, session_str)
+                        }
+                    ]
+                }
+            ]
+        }
+    });
+
+    let settings_path = claude_dir.join("settings.local.json");
+    let content = serde_json::to_string_pretty(&settings)?;
+    fs::write(&settings_path, content)?;
+
     Ok(())
 }

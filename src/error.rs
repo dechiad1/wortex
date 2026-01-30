@@ -50,6 +50,9 @@ pub enum Error {
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("Database error: {0}")]
+    Database(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
