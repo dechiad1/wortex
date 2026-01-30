@@ -43,3 +43,61 @@ pub fn execute(session_id: &str, hook_type: &str) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_hook_input_read_tool() {
+        let json = r#"{"tool_name":"Read","tool_input":{"file_path":"/home/user/test.rs"}}"#;
+        let hook_input: HookInput = serde_json::from_str(json).unwrap();
+
+        assert_eq!(hook_input.tool_name, "Read");
+        assert_eq!(
+            hook_input.tool_input["file_path"],
+            "/home/user/test.rs"
+        );
+    }
+
+    #[test]
+    fn test_parse_hook_input_bash_tool() {
+        let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status","timeout":60000}}"#;
+        let hook_input: HookInput = serde_json::from_str(json).unwrap();
+
+        assert_eq!(hook_input.tool_name, "Bash");
+        assert_eq!(hook_input.tool_input["command"], "git status");
+        assert_eq!(hook_input.tool_input["timeout"], 60000);
+    }
+
+    #[test]
+    fn test_parse_hook_input_with_extra_fields() {
+        // PostToolUse includes tool_output, which we ignore
+        let json = r#"{"tool_name":"Read","tool_input":{"file_path":"/test"},"tool_output":"file contents..."}"#;
+        let hook_input: HookInput = serde_json::from_str(json).unwrap();
+
+        assert_eq!(hook_input.tool_name, "Read");
+    }
+
+    #[test]
+    fn test_parse_hook_input_nested_object() {
+        let json = r#"{"tool_name":"Edit","tool_input":{"file_path":"/test.rs","old_string":"fn main()","new_string":"fn main() -> Result<()>"}}"#;
+        let hook_input: HookInput = serde_json::from_str(json).unwrap();
+
+        assert_eq!(hook_input.tool_name, "Edit");
+        assert_eq!(hook_input.tool_input["old_string"], "fn main()");
+    }
+
+    #[test]
+    fn test_invalid_session_id_format() {
+        let result = Uuid::parse_str("not-a-uuid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_valid_session_id_format() {
+        let uuid_str = "550e8400-e29b-41d4-a716-446655440000";
+        let result = Uuid::parse_str(uuid_str);
+        assert!(result.is_ok());
+    }
+}
