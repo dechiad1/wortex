@@ -20,7 +20,7 @@ pub fn execute(session_id: &str, hook_type: &str) -> Result<()> {
 
     // Validate hook type
     if hook_type != "pre" && hook_type != "post" {
-        return Err(Error::Git(format!("Invalid hook type: {}", hook_type)));
+        return Err(Error::InvalidHookType(hook_type.to_string()));
     }
 
     // Read hook input from stdin
