@@ -1,9 +1,13 @@
 use crate::cli::ExitKillArg;
+use crate::db;
 use crate::error::{Error, Result};
 use crate::state::{self, Command, Entry, ExitKill};
 use crate::{git, tmux};
 use chrono::Utc;
+use serde_json::json;
 use std::env;
+use std::fs;
+use std::path::Path;
 use uuid::Uuid;
 
 pub struct NewArgs {
@@ -79,6 +83,9 @@ pub fn execute(args: NewArgs) -> Result<()> {
     println!("Creating worktree at {:?}...", worktree_path);
     git::add_worktree(&worktree_path, &args.branch, &start_point)?;
 
+    // Get wortex binary path (needed for hooks config)
+    let wortex_bin = env::current_exe()?;
+
     // Get tmux session
     let session = tmux::get_current_session()?;
 
@@ -116,8 +123,14 @@ pub fn execute(args: NewArgs) -> Result<()> {
     // Save entry before creating window
     state::add_entry(entry.clone())?;
 
-    // Get the wortex binary path
-    let wortex_bin = env::current_exe()?;
+    // Initialize the database
+    db::init_db()?;
+
+    // Create Claude hooks configuration for tool usage logging
+    if matches!(entry.command, Command::Claude { .. }) {
+        println!("Setting up Claude hooks for tool logging...");
+        create_claude_hooks_config(&worktree_path, &wortex_bin, entry.id)?;
+    }
 
     // Create tmux window with wortex __run command
     let run_command = format!("{} __run {}", wortex_bin.display(), entry.id);
@@ -129,4 +142,189 @@ pub fn execute(args: NewArgs) -> Result<()> {
         args.branch
     );
     Ok(())
+}
+
+/// Creates .claude/settings.local.json with hooks to log tool usage
+fn create_claude_hooks_config(
+    worktree_path: &Path,
+    wortex_bin: &Path,
+    session_id: Uuid,
+) -> Result<()> {
+    let claude_dir = worktree_path.join(".claude");
+    fs::create_dir_all(&claude_dir)?;
+
+    let wortex_path = wortex_bin.display().to_string();
+    let session_str = session_id.to_string();
+
+    let settings = json!({
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": ".*",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": format!("{} __log-tool {} pre", wortex_path, session_str)
+                        }
+                    ]
+                }
+            ],
+            "PostToolUse": [
+                {
+                    "matcher": ".*",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": format!("{} __log-tool {} post", wortex_path, session_str)
+                        }
+                    ]
+                }
+            ]
+        }
+    });
+
+    let settings_path = claude_dir.join("settings.local.json");
+    let content = serde_json::to_string_pretty(&settings)?;
+    fs::write(&settings_path, content)?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_create_hooks_config_creates_directory_and_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let worktree_path = temp_dir.path();
+        let wortex_bin = PathBuf::from("/usr/bin/wortex");
+        let session_id = Uuid::new_v4();
+
+        create_claude_hooks_config(worktree_path, &wortex_bin, session_id).unwrap();
+
+        let claude_dir = worktree_path.join(".claude");
+        assert!(claude_dir.exists());
+        assert!(claude_dir.join("settings.local.json").exists());
+    }
+
+    #[test]
+    fn test_create_hooks_config_contains_pre_and_post_hooks() {
+        let temp_dir = TempDir::new().unwrap();
+        let worktree_path = temp_dir.path();
+        let wortex_bin = PathBuf::from("/usr/bin/wortex");
+        let session_id = Uuid::new_v4();
+
+        create_claude_hooks_config(worktree_path, &wortex_bin, session_id).unwrap();
+
+        let settings_path = worktree_path.join(".claude").join("settings.local.json");
+        let content = fs::read_to_string(&settings_path).unwrap();
+        let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        assert!(settings["hooks"]["PreToolUse"].is_array());
+        assert!(settings["hooks"]["PostToolUse"].is_array());
+    }
+
+    #[test]
+    fn test_create_hooks_config_uses_correct_session_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let worktree_path = temp_dir.path();
+        let wortex_bin = PathBuf::from("/usr/bin/wortex");
+        let session_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+
+        create_claude_hooks_config(worktree_path, &wortex_bin, session_id).unwrap();
+
+        let settings_path = worktree_path.join(".claude").join("settings.local.json");
+        let content = fs::read_to_string(&settings_path).unwrap();
+
+        assert!(content.contains("550e8400-e29b-41d4-a716-446655440000"));
+    }
+
+    #[test]
+    fn test_create_hooks_config_uses_correct_binary_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let worktree_path = temp_dir.path();
+        let wortex_bin = PathBuf::from("/custom/path/to/wortex");
+        let session_id = Uuid::new_v4();
+
+        create_claude_hooks_config(worktree_path, &wortex_bin, session_id).unwrap();
+
+        let settings_path = worktree_path.join(".claude").join("settings.local.json");
+        let content = fs::read_to_string(&settings_path).unwrap();
+
+        assert!(content.contains("/custom/path/to/wortex"));
+    }
+
+    #[test]
+    fn test_create_hooks_config_matcher_is_wildcard() {
+        let temp_dir = TempDir::new().unwrap();
+        let worktree_path = temp_dir.path();
+        let wortex_bin = PathBuf::from("/usr/bin/wortex");
+        let session_id = Uuid::new_v4();
+
+        create_claude_hooks_config(worktree_path, &wortex_bin, session_id).unwrap();
+
+        let settings_path = worktree_path.join(".claude").join("settings.local.json");
+        let content = fs::read_to_string(&settings_path).unwrap();
+        let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // Matcher should be ".*" to catch all tools
+        assert_eq!(settings["hooks"]["PreToolUse"][0]["matcher"], ".*");
+        assert_eq!(settings["hooks"]["PostToolUse"][0]["matcher"], ".*");
+    }
+
+    #[test]
+    fn test_create_hooks_config_hook_type_is_command() {
+        let temp_dir = TempDir::new().unwrap();
+        let worktree_path = temp_dir.path();
+        let wortex_bin = PathBuf::from("/usr/bin/wortex");
+        let session_id = Uuid::new_v4();
+
+        create_claude_hooks_config(worktree_path, &wortex_bin, session_id).unwrap();
+
+        let settings_path = worktree_path.join(".claude").join("settings.local.json");
+        let content = fs::read_to_string(&settings_path).unwrap();
+        let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(
+            settings["hooks"]["PreToolUse"][0]["hooks"][0]["type"],
+            "command"
+        );
+        assert_eq!(
+            settings["hooks"]["PostToolUse"][0]["hooks"][0]["type"],
+            "command"
+        );
+    }
+
+    #[test]
+    fn test_create_hooks_config_command_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let worktree_path = temp_dir.path();
+        let wortex_bin = PathBuf::from("/usr/bin/wortex");
+        let session_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+
+        create_claude_hooks_config(worktree_path, &wortex_bin, session_id).unwrap();
+
+        let settings_path = worktree_path.join(".claude").join("settings.local.json");
+        let content = fs::read_to_string(&settings_path).unwrap();
+        let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        let pre_cmd = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap();
+        let post_cmd = settings["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap();
+
+        assert_eq!(
+            pre_cmd,
+            "/usr/bin/wortex __log-tool 550e8400-e29b-41d4-a716-446655440000 pre"
+        );
+        assert_eq!(
+            post_cmd,
+            "/usr/bin/wortex __log-tool 550e8400-e29b-41d4-a716-446655440000 post"
+        );
+    }
 }

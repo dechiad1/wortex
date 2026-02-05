@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::Command;
 
 pub fn is_git_repo() -> bool {
@@ -65,7 +65,7 @@ pub fn fetch(remote: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn add_worktree(path: &PathBuf, branch: &str, start_point: &str) -> Result<()> {
+pub fn add_worktree(path: &Path, branch: &str, start_point: &str) -> Result<()> {
     let output = Command::new("git")
         .args([
             "worktree",
@@ -85,7 +85,7 @@ pub fn add_worktree(path: &PathBuf, branch: &str, start_point: &str) -> Result<(
     Ok(())
 }
 
-pub fn remove_worktree(path: &PathBuf) -> Result<()> {
+pub fn remove_worktree(path: &Path) -> Result<()> {
     let output = Command::new("git")
         .args(["worktree", "remove", "--force", path.to_str().unwrap()])
         .output()?;
@@ -111,7 +111,7 @@ pub fn delete_branch(branch: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn status_short(path: &PathBuf) -> Result<String> {
+pub fn status_short(path: &Path) -> Result<String> {
     let output = Command::new("git")
         .args(["-C", path.to_str().unwrap(), "status", "-s"])
         .output()?;
@@ -141,7 +141,7 @@ fn parse_repo_name(url: &str) -> Result<String> {
 
 fn to_acronym(name: &str) -> String {
     // Split on '-' or '_'
-    let parts: Vec<&str> = name.split(|c| c == '-' || c == '_').collect();
+    let parts: Vec<&str> = name.split(['-', '_']).collect();
 
     if parts.len() == 1 {
         // No separators, return name as-is

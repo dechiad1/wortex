@@ -1,5 +1,6 @@
 mod cli;
 mod commands;
+mod db;
 mod error;
 mod git;
 mod state;
@@ -81,6 +82,33 @@ fn main() {
                 std::process::exit(1);
             }
             commands::status::execute()
+        }
+        Commands::LogTool {
+            session_id,
+            hook_type,
+        } => {
+            if let Err(e) = state::ensure_initialized() {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+            commands::log_tool::execute(&session_id, &hook_type)
+        }
+        Commands::Tools {
+            branch,
+            json,
+            hook_type,
+            limit,
+        } => {
+            if let Err(e) = state::ensure_initialized() {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+            commands::tools::execute(commands::tools::ToolsArgs {
+                branch,
+                json,
+                hook_type,
+                limit,
+            })
         }
     };
 

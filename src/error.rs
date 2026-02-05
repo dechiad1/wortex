@@ -50,6 +50,12 @@ pub enum Error {
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("Database error: {0}")]
+    Database(String),
+
+    #[error("Invalid hook type: {0} (expected 'pre' or 'post')")]
+    InvalidHookType(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -84,6 +84,35 @@ pub enum Commands {
 
     /// Show git status for all tracked worktrees
     Status,
+
+    /// Internal command to log tool usage from Claude hooks
+    #[command(hide = true)]
+    #[command(name = "__log-tool")]
+    LogTool {
+        /// Session ID (entry UUID)
+        session_id: String,
+
+        /// Hook type: "pre" or "post"
+        hook_type: String,
+    },
+
+    /// Query logged tool calls for a session
+    Tools {
+        /// Branch name (optional, shows all if not specified)
+        branch: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Show only specific hook type: "pre" or "post"
+        #[arg(long)]
+        hook_type: Option<String>,
+
+        /// Limit number of results
+        #[arg(long, short)]
+        limit: Option<usize>,
+    },
 }
 
 #[derive(Debug, Clone)]
