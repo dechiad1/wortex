@@ -27,8 +27,28 @@ fn db_path() -> Result<PathBuf> {
 
 pub fn open_db() -> Result<Connection> {
     let path = db_path()?;
+    // Ensure parent directory exists
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(Error::Io)?;
+    }
     let conn = Connection::open(&path).map_err(|e| Error::Database(e.to_string()))?;
     Ok(conn)
+}
+
+/// Parse a ToolCall from a database row
+fn row_to_tool_call(row: &rusqlite::Row) -> rusqlite::Result<ToolCall> {
+    let session_str: String = row.get(1)?;
+    let timestamp_str: String = row.get(5)?;
+    Ok(ToolCall {
+        id: row.get(0)?,
+        session_id: Uuid::parse_str(&session_str).unwrap_or_default(),
+        hook_type: row.get(2)?,
+        tool_name: row.get(3)?,
+        input: row.get(4)?,
+        timestamp: DateTime::parse_from_rfc3339(&timestamp_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_default(),
+    })
 }
 
 pub fn init_db() -> Result<()> {
@@ -110,20 +130,7 @@ pub fn get_tool_calls_by_session_with_conn(
         .map_err(|e| Error::Database(e.to_string()))?;
 
     let rows = stmt
-        .query_map(params![session_id.to_string()], |row| {
-            let session_str: String = row.get(1)?;
-            let timestamp_str: String = row.get(5)?;
-            Ok(ToolCall {
-                id: row.get(0)?,
-                session_id: Uuid::parse_str(&session_str).unwrap_or_default(),
-                hook_type: row.get(2)?,
-                tool_name: row.get(3)?,
-                input: row.get(4)?,
-                timestamp: DateTime::parse_from_rfc3339(&timestamp_str)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_default(),
-            })
-        })
+        .query_map(params![session_id.to_string()], row_to_tool_call)
         .map_err(|e| Error::Database(e.to_string()))?;
 
     let mut calls = Vec::new();
@@ -149,20 +156,7 @@ pub fn get_all_tool_calls_with_conn(conn: &Connection) -> Result<Vec<ToolCall>> 
         .map_err(|e| Error::Database(e.to_string()))?;
 
     let rows = stmt
-        .query_map([], |row| {
-            let session_str: String = row.get(1)?;
-            let timestamp_str: String = row.get(5)?;
-            Ok(ToolCall {
-                id: row.get(0)?,
-                session_id: Uuid::parse_str(&session_str).unwrap_or_default(),
-                hook_type: row.get(2)?,
-                tool_name: row.get(3)?,
-                input: row.get(4)?,
-                timestamp: DateTime::parse_from_rfc3339(&timestamp_str)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_default(),
-            })
-        })
+        .query_map([], row_to_tool_call)
         .map_err(|e| Error::Database(e.to_string()))?;
 
     let mut calls = Vec::new();
@@ -170,25 +164,6 @@ pub fn get_all_tool_calls_with_conn(conn: &Connection) -> Result<Vec<ToolCall>> 
         calls.push(row.map_err(|e| Error::Database(e.to_string()))?);
     }
     Ok(calls)
-}
-
-pub fn delete_tool_calls_by_session(session_id: Uuid) -> Result<usize> {
-    let conn = open_db()?;
-    delete_tool_calls_by_session_with_conn(&conn, session_id)
-}
-
-/// Delete tool calls by session using given connection (for testing)
-pub fn delete_tool_calls_by_session_with_conn(
-    conn: &Connection,
-    session_id: Uuid,
-) -> Result<usize> {
-    let count = conn
-        .execute(
-            "DELETE FROM tool_calls WHERE session_id = ?1",
-            params![session_id.to_string()],
-        )
-        .map_err(|e| Error::Database(e.to_string()))?;
-    Ok(count)
 }
 
 #[cfg(test)]
@@ -275,26 +250,6 @@ mod tests {
 
         let all_calls = get_all_tool_calls_with_conn(&conn).unwrap();
         assert_eq!(all_calls.len(), 2);
-    }
-
-    #[test]
-    fn test_delete_tool_calls_by_session() {
-        let conn = create_test_db();
-        let session1 = Uuid::new_v4();
-        let session2 = Uuid::new_v4();
-
-        insert_tool_call_with_conn(&conn, session1, "pre", "Read", "{}").unwrap();
-        insert_tool_call_with_conn(&conn, session1, "post", "Read", "{}").unwrap();
-        insert_tool_call_with_conn(&conn, session2, "pre", "Write", "{}").unwrap();
-
-        let deleted = delete_tool_calls_by_session_with_conn(&conn, session1).unwrap();
-        assert_eq!(deleted, 2);
-
-        let calls1 = get_tool_calls_by_session_with_conn(&conn, session1).unwrap();
-        let calls2 = get_tool_calls_by_session_with_conn(&conn, session2).unwrap();
-
-        assert_eq!(calls1.len(), 0);
-        assert_eq!(calls2.len(), 1);
     }
 
     #[test]

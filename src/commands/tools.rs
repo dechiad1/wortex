@@ -66,6 +66,17 @@ pub fn execute(args: ToolsArgs) -> Result<()> {
     Ok(())
 }
 
+/// Truncate a string to max_chars, handling UTF-8 safely
+fn truncate_string(s: &str, max_chars: usize) -> String {
+    let char_count = s.chars().count();
+    if char_count > max_chars {
+        let truncated: String = s.chars().take(max_chars).collect();
+        format!("{}... ({} chars)", truncated, char_count)
+    } else {
+        s.to_string()
+    }
+}
+
 fn format_input(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Object(map) => {
@@ -73,19 +84,16 @@ fn format_input(value: &serde_json::Value) -> String {
             for (key, val) in map {
                 let val_str = match val {
                     serde_json::Value::String(s) => {
-                        if s.len() > 100 {
-                            format!("\"{}...\" ({} chars)", &s[..100], s.len())
+                        let truncated = truncate_string(s, 100);
+                        if s.chars().count() > 100 {
+                            format!("\"{}\"", truncated)
                         } else {
                             format!("\"{}\"", s)
                         }
                     }
                     _ => {
                         let s = val.to_string();
-                        if s.len() > 100 {
-                            format!("{}... ({} chars)", &s[..100], s.len())
-                        } else {
-                            s
-                        }
+                        truncate_string(&s, 100)
                     }
                 };
                 lines.push(format!("{}: {}", key, val_str));
@@ -126,6 +134,31 @@ mod tests {
         let result = format_input(&value);
         assert!(result.contains("(150 chars)"));
         assert!(result.contains("..."));
+    }
+
+    #[test]
+    fn test_format_input_truncates_utf8_safely() {
+        // Multi-byte UTF-8 characters (each is 4 bytes but 1 char)
+        let emoji_string = "x]".repeat(60); // 120 chars total
+        let value = json!({"content": emoji_string});
+        let result = format_input(&value);
+        assert!(result.contains("(120 chars)"));
+        assert!(result.contains("..."));
+        // Should not panic on UTF-8 boundary
+    }
+
+    #[test]
+    fn test_truncate_string_handles_exact_boundary() {
+        let s = "hello";
+        let result = super::truncate_string(s, 5);
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_truncate_string_handles_short_string() {
+        let s = "hi";
+        let result = super::truncate_string(s, 100);
+        assert_eq!(result, "hi");
     }
 
     #[test]

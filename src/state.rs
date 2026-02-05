@@ -103,9 +103,8 @@ where
 {
     let lock_file = File::create(lock_path()?)?;
     lock_file.lock_exclusive()?;
-    let result = f();
     // lock released on drop
-    result
+    f()
 }
 
 pub fn load() -> Result<State> {

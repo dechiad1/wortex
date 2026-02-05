@@ -27,7 +27,7 @@ pub fn execute(session_id: &str, hook_type: &str) -> Result<()> {
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)
-        .map_err(|e| Error::Io(e))?;
+        .map_err(Error::Io)?;
 
     // Parse the hook input JSON
     let hook_input: HookInput = serde_json::from_str(&input)?;
