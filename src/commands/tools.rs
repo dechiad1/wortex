@@ -10,17 +10,14 @@ pub struct ToolsArgs {
 }
 
 pub fn execute(args: ToolsArgs) -> Result<()> {
-    // Ensure database is initialized
-    db::init_db()?;
+    let conn = db::open_and_init()?;
 
     let mut calls: Vec<ToolCall> = if let Some(ref branch) = args.branch {
-        // Get tool calls for specific session
         let entry = state::find_by_branch(branch)?
             .ok_or_else(|| crate::error::Error::EntryNotFound(branch.clone()))?;
-        db::get_tool_calls_by_session(entry.id)?
+        db::get_tool_calls_by_process(&conn, entry.id)?
     } else {
-        // Get all tool calls
-        db::get_all_tool_calls()?
+        db::get_all_tool_calls(&conn)?
     };
 
     // Filter by hook type if specified
@@ -47,11 +44,11 @@ pub fn execute(args: ToolsArgs) -> Result<()> {
 
             println!(
                 "[{}] {} {} {}",
-                timestamp, hook_badge, call.tool_name, call.session_id
+                timestamp, hook_badge, call.tool_name, call.process_id
             );
 
             // Parse and pretty-print the input (truncated if too long)
-            if let Ok(input_value) = serde_json::from_str::<serde_json::Value>(&call.input) {
+            if let Ok(input_value) = serde_json::from_str::<serde_json::Value>(&call.tool_input) {
                 let input_str = format_input(&input_value);
                 for line in input_str.lines() {
                     println!("    {}", line);
@@ -144,7 +141,6 @@ mod tests {
         let result = format_input(&value);
         assert!(result.contains("(120 chars)"));
         assert!(result.contains("..."));
-        // Should not panic on UTF-8 boundary
     }
 
     #[test]
@@ -177,31 +173,34 @@ mod tests {
 
     #[test]
     fn test_filter_by_hook_type() {
-        let session_id = Uuid::new_v4();
+        let process_id = Uuid::new_v4();
         let mut calls = vec![
             ToolCall {
                 id: 1,
-                session_id,
+                process_id,
                 hook_type: "pre".to_string(),
                 tool_name: "Read".to_string(),
-                input: "{}".to_string(),
+                tool_input: "{}".to_string(),
                 timestamp: Utc::now(),
+                sequence: 1,
             },
             ToolCall {
                 id: 2,
-                session_id,
+                process_id,
                 hook_type: "post".to_string(),
                 tool_name: "Read".to_string(),
-                input: "{}".to_string(),
+                tool_input: "{}".to_string(),
                 timestamp: Utc::now(),
+                sequence: 2,
             },
             ToolCall {
                 id: 3,
-                session_id,
+                process_id,
                 hook_type: "pre".to_string(),
                 tool_name: "Write".to_string(),
-                input: "{}".to_string(),
+                tool_input: "{}".to_string(),
                 timestamp: Utc::now(),
+                sequence: 3,
             },
         ];
 
@@ -217,15 +216,16 @@ mod tests {
 
     #[test]
     fn test_limit_truncates_results() {
-        let session_id = Uuid::new_v4();
+        let process_id = Uuid::new_v4();
         let mut calls: Vec<ToolCall> = (0..10)
             .map(|i| ToolCall {
                 id: i,
-                session_id,
+                process_id,
                 hook_type: "pre".to_string(),
                 tool_name: format!("Tool{}", i),
-                input: "{}".to_string(),
+                tool_input: "{}".to_string(),
                 timestamp: Utc::now(),
+                sequence: i + 1,
             })
             .collect();
 

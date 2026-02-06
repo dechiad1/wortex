@@ -15,7 +15,7 @@ pub struct HookInput {
 
 pub fn execute(session_id: &str, hook_type: &str) -> Result<()> {
     // Parse session ID as UUID
-    let session_uuid = Uuid::parse_str(session_id)
+    let process_id = Uuid::parse_str(session_id)
         .map_err(|_| Error::EntryNotFound(session_id.to_string()))?;
 
     // Validate hook type
@@ -35,11 +35,11 @@ pub fn execute(session_id: &str, hook_type: &str) -> Result<()> {
     // Convert tool_input to string for storage
     let input_str = serde_json::to_string(&hook_input.tool_input)?;
 
-    // Ensure database is initialized
-    db::init_db()?;
+    // Open database (schema auto-created)
+    let conn = db::open_and_init()?;
 
     // Insert tool call into database
-    db::insert_tool_call(session_uuid, hook_type, &hook_input.tool_name, &input_str)?;
+    db::insert_tool_call(&conn, process_id, hook_type, &hook_input.tool_name, &input_str)?;
 
     Ok(())
 }

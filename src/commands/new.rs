@@ -1,5 +1,4 @@
 use crate::cli::ExitKillArg;
-use crate::db;
 use crate::error::{Error, Result};
 use crate::state::{self, Command, Entry, ExitKill};
 use crate::{git, tmux};
@@ -122,9 +121,6 @@ pub fn execute(args: NewArgs) -> Result<()> {
 
     // Save entry before creating window
     state::add_entry(entry.clone())?;
-
-    // Initialize the database
-    db::init_db()?;
 
     // Create Claude hooks configuration for tool usage logging
     if matches!(entry.command, Command::Claude { .. }) {
