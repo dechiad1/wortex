@@ -35,17 +35,6 @@ tasks:
     silent: false
 
   # =============================================================================
-  # BEADS (issue tracking)
-  # =============================================================================
-  beads:sync:
-    desc: Export issues from external beads DB and copy JSONL into repo
-    cmds:
-      - BEADS_DIR=~/planning/wortex/.beads bd sync --force --no-daemon
-      - mkdir -p .beads
-      - cp ~/planning/wortex/.beads/issues.jsonl .beads/issues.jsonl
-    silent: false
-
-  # =============================================================================
   # HELP
   # =============================================================================
   default:
