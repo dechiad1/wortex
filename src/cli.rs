@@ -3,9 +3,19 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(name = "wortex")]
 #[command(about = "Worktree + Tmux Manager CLI")]
+#[command(version = version_string())]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
+}
+
+const fn version_string() -> &'static str {
+    concat!(
+        env!("CARGO_PKG_VERSION"),
+        " (",
+        env!("WORTEX_GIT_HASH"),
+        ")"
+    )
 }
 
 #[derive(Subcommand)]

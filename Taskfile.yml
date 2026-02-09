@@ -35,6 +35,25 @@ tasks:
     silent: false
 
   # =============================================================================
+  # BUILD & TEST
+  # =============================================================================
+  test:
+    desc: Run all tests
+    cmds:
+      - cargo test
+
+  build:
+    desc: Build release binary
+    cmds:
+      - cargo build --release
+
+  install:
+    desc: Build release and install to ~/.cargo/bin
+    deps: [test]
+    cmds:
+      - cargo install --path .
+
+  # =============================================================================
   # HELP
   # =============================================================================
   default:
